@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ウェブでアノテーション</title>
+    <link rel="icon alternate" type="image/svg" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='1em' height='1em' viewBox='0 0 32 32'%3E%3Cpath fill='%23ffd500' d='m29.707 7.293l-3-3a1 1 0 0 0-1.414 0L16 13.586V18h4.414l9.293-9.293a1 1 0 0 0 0-1.414M19.586 16H18v-1.586l5-5L24.586 11zM26 9.586L24.414 8L26 6.414L27.586 8zM10 14a4 4 0 1 1 4-4a4.005 4.005 0 0 1-4 4m0-6a2 2 0 1 0 1.998 2.004A2 2 0 0 0 10 8'/%3E%3Cpath fill='%23ffd500' d='m27.006 14.235l-1.414 1.414L28 18.058L18.058 28L4 13.941V4h9.942l4.406 4.407l1.415-1.415l-4.407-4.406A2 2 0 0 0 13.94 2H4a2 2 0 0 0-2 2v9.941a2 2 0 0 0 .586 1.414l14.058 14.06a2 2 0 0 0 2.828 0l9.943-9.943a2 2 0 0 0 0-2.828Z'/%3E%3C/svg%3E">
+    <style>
+        /* ゆめかわカラーパレット */
+        /* :root {
+            --header-bg-color: #91e3e9;
+            --header-text-color: #ffffff;
+            --main-bg-color: #a8e6cf;
+            --sub-bg-color: #ffd3b6;
+            --border-color: #a8a8a8;
+            --button-bg-color: #91e3e9;
+            --button-text-color: #ffffff;
+            --button-hover-bg-color: #79d1d9;
+            --input-border-color: #a8a8a8;
+            --input-focus-border-color: #a8e6cf;
+        } */
+        :root {
+            --header-bg-color: #2c3e50;
+            --header-text-color: #ecf0f1;
+            --main-bg-color: #ffffff;
+            --sub-bg-color: #bdc3c7;
+            --border-color: #7f8c8d;
+            --button-bg-color: #2980b9;
+            --button-text-color: #ffffff;
+            --button-hover-bg-color: #1e6f99;
+            --input-border-color: #dcdde1;
+            --input-focus-border-color: #3498db;
+        }
+
+        body {
+            margin: 0;
+            width: 100svw;
+            height: 100svh;
+            display: flex;
+            flex-direction: column;
+            font-family: Arial, sans-serif;
+        }
+
+        #headerDiv {
+            width: 100%;
+            height: 70px;
+            background-color: var(--header-bg-color);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        #headerDiv h1 {
+            color: var(--header-text-color);
+            font-size: 1.5em;
+            margin: 0;
+        }
+
+        #bodyDiv {
+            width: 100%;
+            height: 100%;
+            display: flex;
+        }
+
+        #mainDiv {
+            background-color: var(--main-bg-color);
+            width: 70%;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+
+        #subDiv {
+            background-color: var(--sub-bg-color);
+            width: 30%;
+            display: flex;
+            flex-direction: column;
+            padding: 20px;
+        }
+
+        #ioDiv {
+            width: 100%;
+            display: flex;
+            justify-content: space-around;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        #ioDiv input,
+        #ioDiv button {
+            padding: 10px;
+            font-size: 1em;
+            border: none;
+            cursor: pointer;
+            border-radius: 5px;
+        }
+
+        #ioDiv button {
+            background-color: var(--button-bg-color);
+            color: var(--button-text-color);
+        }
+
+        #ioDiv button:hover {
+            background-color: var(--button-hover-bg-color);
+        }
+
+        #imageDiv {
+            width: 100%;
+            /* height: 70%; */
+            flex: 1;
+            border: 1px solid var(--border-color);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            position: relative;
+            overflow: hidden;
+        }
+
+        #imageDiv img {
+            width: 100%;
+            height: 100%;
+            object-fit: scale-down;
+            box-sizing: border-box;
+            touch-action: none;
+            user-select: none;
+        }
+
+        #labelInputDiv {
+            width: 100%;
+        }
+
+        #labelForm {
+            display: flex;
+            margin-bottom: 20px;
+        }
+
+        #labelForm input {
+            flex: 1;
+            padding: 10px;
+            font-size: 1em;
+            border: 1px solid var(--input-border-color);
+            border-radius: 5px;
+        }
+
+        #labelForm input:focus {
+            outline: none;
+            border-color: var(--input-focus-border-color);
+        }
+
+        #labelForm button {
+            padding: 10px 15px;
+            font-size: 1em;
+            border: none;
+            cursor: pointer;
+            background-color: var(--button-bg-color);
+            color: var(--button-text-color);
+            border-radius: 5px;
+            margin-left: 10px;
+        }
+
+        #labelForm button:hover {
+            background-color: var(--button-hover-bg-color);
+        }
+
+        #labelListDiv {
+            background-color: #ffffff;
+            border: 1px solid var(--border-color);
+            border-radius: 5px;
+            padding: 10px;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="headerDiv">
+        <h1>ウェブでアノテーション</h1>
+    </div>
+    <div id="bodyDiv">
+        <div id="mainDiv">
+            <div id="ioDiv">
+                <input type="file" id="fileInput" accept="image/*, application/json" multiple>
+                <span id="fileInfoSpan"></span>
+                <button id="exportButton">JSONを出力する</button>
+                <button id="exportAllButton">JSONをまとめて出力する</button>
+                <button id="resetButton">リセットする</button>
+            </div>
+            <div id="imageDiv">
+                <img id="image" src="" alt="画像が表示されます">
+            </div>
+        </div>
+        <div id="subDiv">
+            <div id="labelInputDiv">
+                <form id="labelForm">
+                    <input type="text" id="labelInput" placeholder="ラベルを追加">
+                    <button id="addButton">追加</button>
+                </form>
+                <div id="labelListDiv">
+                    <!-- 追加されたラベルをここに表示 -->
+                </div>
+            </div>
+            <div id="instructionDiv">
+
+                <h2>操作方法</h2>
+                <!-- 
+                - 囲う：マウスクリック・ドラッグ
+                - きりかえる：左右キー or ADキー
+                - けす：ダブルクリック or Alt+クリック
+                - ぜんぶけす：Gキー
+                - ラベルつける(リストから)：クリック or 1-9キー
+                - ラベルつける(入力)：wでフォーカス、Enterで追加、Escでキャンセル
+                - 囲いをコピーする：Ctrl+→ or Ctrl+D
+                 -->
+                <ul>
+                    <li>囲う：マウスクリック・ドラッグ</li>
+                    <li>きりかえる：左右キー or ADキー</li>
+                    <li>けす：ダブルクリック or Alt+クリック</li>
+                    <li>ぜんぶけす：Gキー</li>
+                    <li>ラベルつける(リストから)：クリック or 1-9キー</li>
+                    <li>ラベルつける(入力)：wでフォーカス、Enterで追加、Escでキャンセル</li>
+                    <li>囲いをコピーする：Ctrl+→ or Ctrl+D</li>
+                </ul>
+                <!-- <ul>
+                    <li>画像を読み込む(複数枚可)</li>
+                    <li>範囲選択してアノテーションする</li>
+                    <ul>
+                        <li>範囲指定の削除…ダブルクリック</li>
+                        <li>次の画像にアノテーションをコピーする…Ctrl + →</li>
+                        <li>ラベルの指定…リストから選ぶ or 入力してEnter</li>
+                    </ul>
+                    <li>画像を切り替えてアノテーションする</li>
+                    <ul>
+                        <li>左右キー or ADキーで切り替え</li>
+                    </ul>
+                    <li>JSONを出力する</li>
+                    <ul>
+                        <li>JSONをまとめて出力した場合、すべてが配列としてまとまったJSONが出力されます</li>
+                        <ul>
+                            <li>Pythonかなんかで分割してください…</li>
+                        </ul>
+                    </ul>
+                </ul> -->
+            </div>
+        </div>
+    </div>
+    <script src="bundle.js"></script>
+</body>
+
+</html>
