@@ -523,11 +523,21 @@ function parseLabelDataFromCsv(csvText: string): { data: LabelData[], map: Map<s
             continue;
         }
         const displayName = (row[nameIndex] ?? "").trim();
-        if (!map.has(label)) {
-            const resolvedName = displayName || label;
-            map.set(label, resolvedName);
-            data.push({ label, displayName: resolvedName });
+        if (map.has(label)) {
+            const existingName = map.get(label);
+            const newName = displayName || label;
+            if (existingName !== newName) {
+                console.warn(
+                    `CSVに重複した料理コードが見つかりました: '${label}'。` +
+                    ` 最初の「お客様向け名称」='${existingName}' を使用し、` +
+                    `後の「お客様向け名称」='${newName}' は無視します。`
+                );
+            }
+            continue;
         }
+        const resolvedName = displayName || label;
+        map.set(label, resolvedName);
+        data.push({ label, displayName: resolvedName });
     }
 
     if (data.length === 0) {
