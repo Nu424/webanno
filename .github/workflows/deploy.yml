@@ -1,0 +1,72 @@
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: ["main"] # mainが更新されたら実行
+  workflow_dispatch:   # 手動実行も許可
+
+# GITHUB_TOKENの権限設定（Pagesへのデプロイに必要）
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# 同時実行の制御（連打された場合に古いビルドをキャンセル）
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+        # これで dist/bundle.js が生成されます
+
+      # 【重要】公開用ディレクトリの作成とファイル統合
+      - name: Prepare deployment artifact
+        run: |
+          # 1. 公開用の一時フォルダ(_site)を作成
+          mkdir _site
+          
+          # 2. docsの中身(index.htmlなど)を _site 直下にコピー
+          cp -r docs/* _site/
+ 
+          # 3. dist(ビルド成果物)を _site 直下にコピー
+          #    - docs/index.html の <script src="bundle.js"> と一致させるため、
+          #      bundle.js は公開ルート(_site/)に配置する
+          cp -r dist/* _site/
+          
+          # 確認用（ログにファイル構成を表示）
+          echo "--- Files to be deployed ---"
+          ls -R _site
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          # 合体させた _site ディレクトリをアップロード対象にする
+          path: './_site'
+
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
