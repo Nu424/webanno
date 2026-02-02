@@ -77,7 +77,7 @@ export class AnnotationBox {
         white-space: nowrap;
         `
 
-        labelElement.textContent = this.label;
+        labelElement.textContent = this.annotationBoxManager.resolveLabelDisplay(this.label);
         newObject.appendChild(labelElement);
 
 
@@ -163,7 +163,7 @@ export class AnnotationBox {
         box.setAttribute("data-x", this.x.toString());
         box.setAttribute("data-y", this.y.toString());
 
-        label.textContent = this.label;
+        label.textContent = this.annotationBoxManager.resolveLabelDisplay(this.label);
     }
 
     setValue(parameters: { x?: number, y?: number, width?: number, height?: number, label?: string }) {
@@ -224,6 +224,7 @@ export class AnnotationBoxManager {
     imgOffset: { x: number, y: number };
     selectedAnnotationBox: AnnotationBox | undefined = undefined;
     onSelectedAnnotationBoxChanged?: (annotationBox: AnnotationBox, isSelectedDifferent?: boolean) => void;
+    labelResolver?: (label: string) => string;
 
     constructor(
         elementsParameters: {
@@ -340,6 +341,16 @@ export class AnnotationBoxManager {
             this.annotationBoxes = this.annotationBoxes.filter((box) => box !== annotationBox);
             // console.log(this.annotationBoxes);
         }
+    }
+
+    resolveLabelDisplay(label: string): string {
+        return this.labelResolver ? this.labelResolver(label) : label;
+    }
+
+    updateLabelDisplays() {
+        this.annotationBoxes.forEach((annotationBox) => {
+            annotationBox.updateElement();
+        });
     }
 
     convertLabelme(): LabelMe {
