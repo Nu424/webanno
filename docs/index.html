@@ -84,8 +84,10 @@
         #ioDiv {
             width: 100%;
             display: flex;
-            justify-content: space-around;
+            justify-content: center;
             align-items: center;
+            flex-wrap: wrap;
+            gap: 10px;
             margin-bottom: 20px;
         }
 
@@ -98,6 +100,11 @@
             border-radius: 5px;
         }
 
+        #ioDiv label {
+            font-size: 0.9em;
+            color: #444;
+        }
+
         #ioDiv button {
             background-color: var(--button-bg-color);
             color: var(--button-text-color);
@@ -105,6 +112,11 @@
 
         #ioDiv button:hover {
             background-color: var(--button-hover-bg-color);
+        }
+
+        #csvInfoSpan {
+            font-size: 0.9em;
+            color: #666;
         }
 
         #imageDiv {
@@ -183,8 +195,12 @@
     <div id="bodyDiv">
         <div id="mainDiv">
             <div id="ioDiv">
+                <label for="fileInput">画像/JSON</label>
                 <input type="file" id="fileInput" accept="image/*, application/json" multiple>
+                <label for="csvInput">メニューCSV</label>
+                <input type="file" id="csvInput" accept=".csv,text/csv">
                 <span id="fileInfoSpan"></span>
+                <span id="csvInfoSpan"></span>
                 <button id="exportButton">JSONを出力する</button>
                 <button id="exportAllButton">JSONをまとめて出力する</button>
                 <button id="resetButton">リセットする</button>

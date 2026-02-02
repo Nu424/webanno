@@ -3,10 +3,12 @@ import { LabelMe } from "./LabelMe";
 
 const inputDiv = document.getElementById("inputDiv"); // TODO 画像のドラッグアンドドロップ、ペーストへの対応
 const fileInput = document.getElementById("fileInput") as HTMLInputElement;
+const csvInput = document.getElementById("csvInput") as HTMLInputElement;
 const imageElement = document.getElementById("image") as HTMLImageElement;
 const imageDiv = document.getElementById("imageDiv") as HTMLDivElement;
 
 const fileInfoSpan = document.getElementById("fileInfoSpan") as HTMLSpanElement;
+const csvInfoSpan = document.getElementById("csvInfoSpan") as HTMLSpanElement;
 
 /**
  * LabelMe形式のJSONを作成してダウンロードする
@@ -100,19 +102,32 @@ labelForm.addEventListener("submit", (e) => {
  * ラベルを項目から選ぶ
  */
 const labelListDiv = document.getElementById("labelListDiv") as HTMLDivElement;
-let labelData: { displayName: string, label: string }[] = [];
+type LabelData = { displayName: string, label: string };
+let labelData: LabelData[] = [];
+let labelDisplayMap = new Map<string, string>();
 
-document.addEventListener("DOMContentLoaded", async (e) => {
-    labelData = [
-        { displayName: "ライス", label: "rice" },
-        { displayName: "味噌汁", label: "miso_soup" },
-    ];
+function resolveLabelDisplay(label: string): string {
+    return labelDisplayMap.get(label) ?? label;
+}
 
-    // console.log(labelData);
+function formatLabelForList(displayName: string, label: string): string {
+    if (!displayName || displayName === label) {
+        return label;
+    }
+    return `${displayName} (${label})`;
+}
 
+function renderLabelList() {
+    labelListDiv.innerHTML = "";
+    if (labelData.length === 0) {
+        const emptyDiv = document.createElement("div");
+        emptyDiv.textContent = "CSVを読み込むとラベルが表示されます";
+        labelListDiv.appendChild(emptyDiv);
+        return;
+    }
     labelData.forEach((data, index) => {
         const labelDiv = document.createElement("div");
-        labelDiv.textContent = `${0 <= index && index <= 8 ? `${index + 1} ` : ""}${data.displayName}(${data.label})`;
+        labelDiv.textContent = `${0 <= index && index <= 8 ? `${index + 1} ` : ""}${formatLabelForList(data.displayName, data.label)}`;
         labelDiv.addEventListener("click", (e) => {
             const currentAnnotationBoxManager = getCurrentAnnotationBoxManager();
             if (!currentAnnotationBoxManager) return;
@@ -120,6 +135,36 @@ document.addEventListener("DOMContentLoaded", async (e) => {
         });
         labelListDiv.appendChild(labelDiv);
     });
+}
+
+function applyLabelResolverToManagers() {
+    annotationFiles.forEach((annotationBoxManager) => {
+        annotationBoxManager.labelResolver = resolveLabelDisplay;
+        annotationBoxManager.updateLabelDisplays();
+    });
+}
+
+document.addEventListener("DOMContentLoaded", async (e) => {
+    renderLabelList();
+});
+
+/**
+ * CSV読み込み
+ */
+csvInput.addEventListener("change", async (e) => {
+    if (!csvInput.files || csvInput.files.length === 0) return;
+    const file = csvInput.files[0];
+    const csvText = await loadTextFile(file);
+    const parsed = parseLabelDataFromCsv(csvText);
+    if (parsed.error) {
+        csvInfoSpan.textContent = `CSV読み込み失敗: ${parsed.error}`;
+        return;
+    }
+    labelData = parsed.data;
+    labelDisplayMap = parsed.map;
+    csvInfoSpan.textContent = `CSV: ${file.name} (${labelData.length}件)`;
+    renderLabelList();
+    applyLabelResolverToManagers();
 });
 
 
@@ -259,6 +304,7 @@ fileInput.addEventListener("change", async (e) => {
                     { annotationBoxContainerElement: imageDiv, imageElement: imageElement },
                     { filename: fileName, width: width, height: height, data: base64 }
                 );
+                newAnnotationBoxManager.labelResolver = resolveLabelDisplay;
                 newAnnotationBoxManager.onSelectedAnnotationBoxChanged = (selectedAnnotationBox, isSelectedDifferent) => {
                     if (!isSelectedDifferent) return; // 選択が変わっていない場合は何もしない
                     // ---選択したアノテーションボックスが変更されたときの処理
@@ -283,7 +329,7 @@ fileInput.addEventListener("change", async (e) => {
                 annotationFiles.push(newAnnotationBoxManager);
             } else if (mimeType === "application/json") { // ---jsonの場合
                 // ---jsonの読み込み
-                const json = await loadJsonFile(file)
+                const json = await loadTextFile(file)
                 const labelme = new LabelMe();
                 labelme.importFromJSON(json);
                 // ---画像の読み込み
@@ -292,6 +338,7 @@ fileInput.addEventListener("change", async (e) => {
                     { annotationBoxContainerElement: imageDiv, imageElement: imageElement },
                     { filename: labelme.imagePath, width: labelme.imageWidth, height: labelme.imageHeight, data: newImageData }
                 );
+                newAnnotationBoxManager.labelResolver = resolveLabelDisplay;
                 newAnnotationBoxManager.onSelectedAnnotationBoxChanged = (selectedAnnotationBox, isSelectedDifferent) => {
                     if (!isSelectedDifferent) return; // 選択が変わっていない場合は何もしない
                     // ---選択したアノテーションボックスが変更されたときの処理
@@ -368,11 +415,11 @@ imageElement.addEventListener("mousedown", (e) => {
 // ----------
 
 /**
- * ファイルを読み込んでJSONを返す
+ * テキストファイルを読み込む
  * @param file 読み込むファイル
- * @returns JSON文字列
+ * @returns 文字列
  */
-async function loadJsonFile(file: File): Promise<string> {
+async function loadTextFile(file: File): Promise<string> {
     return new Promise((resolve, reject) => {
         const reader = new FileReader();
         reader.onload = () => {
@@ -380,6 +427,124 @@ async function loadJsonFile(file: File): Promise<string> {
         }
         reader.readAsText(file);
     });
+}
+
+/**
+ * CSV文字列を配列にする
+ * @param text CSV文字列
+ * @returns 2次元配列
+ */
+function parseCsv(text: string): string[][] {
+    const normalizedText = text.replace(/^\uFEFF/, "");
+    const rows: string[][] = [];
+    let row: string[] = [];
+    let field = "";
+    let inQuotes = false;
+
+    for (let i = 0; i < normalizedText.length; i++) {
+        const char = normalizedText[i];
+
+        if (inQuotes) {
+            if (char === "\"") {
+                if (normalizedText[i + 1] === "\"") {
+                    field += "\"";
+                    i++;
+                } else {
+                    inQuotes = false;
+                }
+            } else {
+                field += char;
+            }
+            continue;
+        }
+
+        if (char === "\"") {
+            inQuotes = true;
+            continue;
+        }
+
+        if (char === ",") {
+            row.push(field);
+            field = "";
+            continue;
+        }
+
+        if (char === "\n" || char === "\r") {
+            if (char === "\r" && normalizedText[i + 1] === "\n") {
+                i++;
+            }
+            row.push(field);
+            if (row.length > 1 || row[0] !== "") {
+                rows.push(row);
+            }
+            row = [];
+            field = "";
+            continue;
+        }
+
+        field += char;
+    }
+
+    if (field.length > 0 || row.length > 0) {
+        row.push(field);
+        rows.push(row);
+    }
+
+    return rows;
+}
+
+/**
+ * CSVからラベルデータを生成
+ */
+function parseLabelDataFromCsv(csvText: string): { data: LabelData[], map: Map<string, string>, error?: string } {
+    const rows = parseCsv(csvText);
+    if (rows.length === 0) {
+        return { data: [], map: new Map(), error: "CSVが空です" };
+    }
+
+    const header = rows[0].map((cell) => cell.trim());
+    const codeIndex = header.indexOf("料理コード");
+    const nameIndex = header.indexOf("お客様向け名称");
+
+    if (codeIndex === -1 || nameIndex === -1) {
+        return { data: [], map: new Map(), error: "ヘッダーに「料理コード」または「お客様向け名称」が見つかりません" };
+    }
+
+    const map = new Map<string, string>();
+    const data: LabelData[] = [];
+
+    for (let i = 1; i < rows.length; i++) {
+        const row = rows[i];
+        if (row.length <= Math.max(codeIndex, nameIndex)) {
+            continue;
+        }
+        const label = row[codeIndex]?.trim() ?? "";
+        if (!label) {
+            continue;
+        }
+        const displayName = row[nameIndex]?.trim() ?? "";
+        if (map.has(label)) {
+            const existingName = map.get(label);
+            const newName = displayName || label;
+            if (existingName !== newName) {
+                console.warn(
+                    `CSVに重複した料理コードが見つかりました: '${label}'。` +
+                    ` 最初の「お客様向け名称」='${existingName}' を使用し、` +
+                    `後の「お客様向け名称」='${newName}' は無視します。`
+                );
+            }
+            continue;
+        }
+        const resolvedName = displayName || label;
+        map.set(label, resolvedName);
+        data.push({ label, displayName: resolvedName });
+    }
+
+    if (data.length === 0) {
+        return { data, map, error: "有効なデータが見つかりません" };
+    }
+
+    return { data, map };
 }
 
 /**
@@ -414,4 +579,3 @@ async function getImageBase64(file: File): Promise<string> {
         reader.readAsDataURL(file);
     });
 }
-
