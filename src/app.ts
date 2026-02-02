@@ -6,6 +6,18 @@ const fileInput = document.getElementById("fileInput") as HTMLInputElement;
 const csvInput = document.getElementById("csvInput") as HTMLInputElement;
 const imageElement = document.getElementById("image") as HTMLImageElement;
 const imageDiv = document.getElementById("imageDiv") as HTMLDivElement;
+const annotationLayer = getOrCreateAnnotationLayer(imageDiv);
+
+function getOrCreateAnnotationLayer(container: HTMLDivElement): HTMLDivElement {
+    const existingLayer = document.getElementById("annotationLayer") as HTMLDivElement | null;
+    if (existingLayer) {
+        return existingLayer;
+    }
+    const newLayer = document.createElement("div");
+    newLayer.id = "annotationLayer";
+    container.appendChild(newLayer);
+    return newLayer;
+}
 
 const fileInfoSpan = document.getElementById("fileInfoSpan") as HTMLSpanElement;
 const csvInfoSpan = document.getElementById("csvInfoSpan") as HTMLSpanElement;
@@ -235,7 +247,7 @@ document.addEventListener("keydown", (e) => {
             const label = labelData[number]?.label;
             if (!label) return;
             currentAnnotationBoxManager.selectedAnnotationBox?.setValue({ label: label });
-        }else if (e.key==="g"){
+        } else if (e.key === "g") {
             // ---すべての範囲選択を削除する
             const currentAnnotationBoxManager = getCurrentAnnotationBoxManager();
             if (!currentAnnotationBoxManager) return;
@@ -256,7 +268,10 @@ window.addEventListener('beforeunload', function (event) {
 window.addEventListener("resize", (e) => {
     const currentAnnotationBoxManager = getCurrentAnnotationBoxManager();
     if (!currentAnnotationBoxManager) return;
-    loadImageDisplay();
+    window.requestAnimationFrame(() => {
+        currentAnnotationBoxManager.updateAnnotationLayerLayout();
+        currentAnnotationBoxManager.loadAnnotationBoxes();
+    });
 });
 
 // ----------
@@ -266,7 +281,10 @@ function loadImageDisplay() {
     const currentAnnotationBoxManager = getCurrentAnnotationBoxManager();
     if (!currentAnnotationBoxManager) return;
     currentAnnotationBoxManager.loadImageFile();
-    currentAnnotationBoxManager.loadAnnotationBoxes();
+    window.requestAnimationFrame(() => {
+        currentAnnotationBoxManager.updateAnnotationLayerLayout();
+        currentAnnotationBoxManager.loadAnnotationBoxes();
+    });
 
     // ---ファイル情報の表示
     fileInfoSpan.textContent = `${annotationFilesIndex + 1}/${annotationFiles.length} : ${currentAnnotationBoxManager.imageFilename}`;
@@ -301,7 +319,7 @@ fileInput.addEventListener("change", async (e) => {
 
                 // ---AnnotationBoxManagerの作成 -> 画像の読み込み
                 const newAnnotationBoxManager = new AnnotationBoxManager(
-                    { annotationBoxContainerElement: imageDiv, imageElement: imageElement },
+                    { imageContainerElement: imageDiv, annotationLayerElement: annotationLayer, imageElement: imageElement },
                     { filename: fileName, width: width, height: height, data: base64 }
                 );
                 newAnnotationBoxManager.labelResolver = resolveLabelDisplay;
@@ -335,7 +353,7 @@ fileInput.addEventListener("change", async (e) => {
                 // ---画像の読み込み
                 const newImageData = `data:image/${LabelMe.getExtension(labelme.imagePath)};base64,${labelme.imageData}`;
                 const newAnnotationBoxManager = new AnnotationBoxManager(
-                    { annotationBoxContainerElement: imageDiv, imageElement: imageElement },
+                    { imageContainerElement: imageDiv, annotationLayerElement: annotationLayer, imageElement: imageElement },
                     { filename: labelme.imagePath, width: labelme.imageWidth, height: labelme.imageHeight, data: newImageData }
                 );
                 newAnnotationBoxManager.labelResolver = resolveLabelDisplay;
@@ -356,14 +374,13 @@ fileInput.addEventListener("change", async (e) => {
                             annotationBox.annotationBoxElements.box.style.backgroundColor = "rgba(255, 0, 0, 0.3)";
                         });
                 }
-                newAnnotationBoxManager.calculateRateAndOffset(); // ここでrateとかが更新される
+                newAnnotationBoxManager.updateAnnotationLayerLayout(); // ここでrateとかが更新される
 
                 // ---shapeの読み込み
                 for (const shape of labelme.shapes) {
-                    const imgOffset = newAnnotationBoxManager.imgOffset;
                     const rate = newAnnotationBoxManager.rate;
-                    const x = (shape.points[0][0] * rate + imgOffset.x);
-                    const y = (shape.points[0][1] * rate + imgOffset.y);
+                    const x = shape.points[0][0] * rate;
+                    const y = shape.points[0][1] * rate;
                     const width = (shape.points[1][0] - shape.points[0][0]) * rate;
                     const height = (shape.points[1][1] - shape.points[0][1]) * rate;
                     const label = shape.label;
@@ -394,16 +411,15 @@ fileInput.addEventListener("change", async (e) => {
 /**
  * 画像上でクリックしたときの処理
  */
-imageElement.addEventListener("mousedown", (e) => {
+annotationLayer.addEventListener("mousedown", (e) => {
     e.preventDefault();
     const currentAnnotationBoxManager = getCurrentAnnotationBoxManager();
     if (!currentAnnotationBoxManager) return;
+    if (e.target !== annotationLayer) return;
 
-    // ---AnnotationBoxManagerを作成したときのimgOffsetを使って、画像上の座標を計算する
-    const imgOffset = currentAnnotationBoxManager.imgOffset;
     const annoboxPosition = {
-        x: e.offsetX + imgOffset.x,
-        y: e.offsetY + imgOffset.y
+        x: e.offsetX,
+        y: e.offsetY
     }
 
     // ---アノテーションボックスの作成
