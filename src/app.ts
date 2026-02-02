@@ -518,11 +518,11 @@ function parseLabelDataFromCsv(csvText: string): { data: LabelData[], map: Map<s
         if (row.length <= Math.max(codeIndex, nameIndex)) {
             continue;
         }
-        const label = (row[codeIndex] ?? "").trim();
+        const label = row[codeIndex]?.trim() ?? "";
         if (!label) {
             continue;
         }
-        const displayName = (row[nameIndex] ?? "").trim();
+        const displayName = row[nameIndex]?.trim() ?? "";
         if (map.has(label)) {
             const existingName = map.get(label);
             const newName = displayName || label;
