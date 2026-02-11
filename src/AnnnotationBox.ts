@@ -213,6 +213,7 @@ export class AnnotationBoxManager {
         選択が更新されたとき
     */
     imageFilename: string; // 画像ファイル名
+    sourceJsonFilename?: string; // 読み込んだJSONファイル名
     imageData: string; // 画像データ(base64)
     imageHeight: number; // 画像の高さ
     imageWidth: number; // 画像の幅
