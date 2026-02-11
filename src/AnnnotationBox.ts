@@ -17,7 +17,7 @@ export class AnnotationBox {
         box: HTMLDivElement;
         label: HTMLSpanElement
     }
-    // AnnotationBoxの座標は、annotationBoxContainerElement内の座標系となる。offsetが加わった値となっている
+    // AnnotationBoxの座標は、annotationLayerElement内の座標系となる。
     x: number = 0;
     y: number = 0;
     width: number = 100;
@@ -173,20 +173,21 @@ export class AnnotationBox {
         this.height = parameters.height ?? this.height;
         this.label = parameters.label ?? this.label;
 
-        this.imageX = (this.x - this.annotationBoxManager.imgOffset.x) / this.annotationBoxManager.rate;
-        this.imageY = (this.y - this.annotationBoxManager.imgOffset.y) / this.annotationBoxManager.rate;
-        this.imageW = this.width / this.annotationBoxManager.rate;
-        this.imageH = this.height / this.annotationBoxManager.rate;
+        const rate = this.annotationBoxManager.rate;
+        this.imageX = this.x / rate;
+        this.imageY = this.y / rate;
+        this.imageW = this.width / rate;
+        this.imageH = this.height / rate;
 
         this.updateElement();
     }
 
-    convertLabelmeShape(imgOffset: { x: number, y: number }, rate: number): Shape {
+    convertLabelmeShape(rate: number): Shape {
         return {
             label: this.label,
             points: [
-                [(this.x - imgOffset.x) / rate, (this.y - imgOffset.y) / rate],
-                [(this.x - imgOffset.x + this.width) / rate, (this.y - imgOffset.y + this.height) / rate]
+                [this.x / rate, this.y / rate],
+                [(this.x + this.width) / rate, (this.y + this.height) / rate]
             ],
             group_id: null,
             description: "",
@@ -218,7 +219,8 @@ export class AnnotationBoxManager {
     imageHeight: number; // 画像の高さ
     imageWidth: number; // 画像の幅
 
-    annotationBoxContainerElement: HTMLElement;
+    imageContainerElement: HTMLElement;
+    annotationLayerElement: HTMLElement;
     imageElement: HTMLImageElement;
     annotationBoxes: AnnotationBox[] = [];
     rate: number;
@@ -229,7 +231,8 @@ export class AnnotationBoxManager {
 
     constructor(
         elementsParameters: {
-            annotationBoxContainerElement: HTMLElement,
+            imageContainerElement: HTMLElement,
+            annotationLayerElement: HTMLElement,
             imageElement: HTMLImageElement
         },
         imageParameters: {
@@ -243,7 +246,8 @@ export class AnnotationBoxManager {
             imgOffset?: { x: number, y: number }
         }
     ) {
-        this.annotationBoxContainerElement = elementsParameters.annotationBoxContainerElement;
+        this.imageContainerElement = elementsParameters.imageContainerElement;
+        this.annotationLayerElement = elementsParameters.annotationLayerElement;
         this.imageElement = elementsParameters.imageElement;
 
         this.imageFilename = imageParameters.filename;
@@ -255,74 +259,79 @@ export class AnnotationBoxManager {
         this.imgOffset = imageDisplayParameters?.imgOffset ?? { x: 0, y: 0 };
     }
 
-    calculateRateAndOffset() {
-        // ---AnnotationBoxが入るコンテナDivのサイズ取得
-        const annotationBoxContainerSize = {
-            width: this.annotationBoxContainerElement.clientWidth,
-            height: this.annotationBoxContainerElement.clientHeight
+    updateAnnotationLayerLayout() {
+        // ---イメージ要素の大きさを取得
+        const imageRect = this.imageElement.getBoundingClientRect();
+        const boxWidth = imageRect.width;
+        const boxHeight = imageRect.height;
+        // ---イメージ・オーバーレイ表示領域の大きさを取得
+        const containerRect = this.imageContainerElement.getBoundingClientRect();
+        const containerLeft = containerRect.left + this.imageContainerElement.clientLeft;
+        const containerTop = containerRect.top + this.imageContainerElement.clientTop;
+
+        if (boxWidth === 0 || boxHeight === 0) {
+            this.rate = 1;
+            this.imgOffset = { x: 0, y: 0 };
+            return;
         }
-        annotationBoxContainerSize.width = orgRound(annotationBoxContainerSize.width, 100);
-        annotationBoxContainerSize.height = orgRound(annotationBoxContainerSize.height, 100);
 
-        // ---*リサイズレートの計算
-        this.rate = Math.min(
-            annotationBoxContainerSize.width / this.imageWidth,
-            annotationBoxContainerSize.height / this.imageHeight
-        );
-        this.rate = orgRound(this.rate, 100);
+        // ---画像リサイズレートを計算
+        const scale = Math.min(1, Math.min(boxWidth / this.imageWidth, boxHeight / this.imageHeight));
+        this.rate = scale;
 
-        // ---*imgOffsetの計算
-        // this.image(width|height)は、画像の元のサイズ。表示用にrateをかけている
-        this.imgOffset = {
-            x: (annotationBoxContainerSize.width - this.imageWidth * this.rate) / 2,
-            y: (annotationBoxContainerSize.height - this.imageHeight * this.rate) / 2
-        }
-        this.imgOffset.x = orgRound(this.imgOffset.x, 100);
-        this.imgOffset.y = orgRound(this.imgOffset.y, 100);
+        const contentWidth = this.imageWidth * scale;
+        const contentHeight = this.imageHeight * scale;
+        // スケーリングや、そもそもの画像サイズが小さいなどが理由で、ある辺(width or height)が小さい場合、img要素よりも小さく描画される。
+        // この場合、img要素サイズと、スケール後画像サイズとの差分を計算し、その分だけ画像を左右・上下にずらす(→真ん中に配置する)
+        const padX = (boxWidth - contentWidth) / 2;
+        const padY = (boxHeight - contentHeight) / 2;
 
-        // ---[デバッグ用]各値の表示
-        // console.log(`annotationBoxContainerSize: ${annotationBoxContainerSize.width}, ${annotationBoxContainerSize.height}`);
-        // console.log(`imageSize: ${this.imageWidth}, ${this.imageHeight}`);
-        // console.log(`rate: ${this.rate}`);
-        // console.log(`imgOffset: ${this.imgOffset.x}, ${this.imgOffset.y}`);
+        // bboxを表示するオーバーレイの位置は、コンテナ~img要素…のオフセットと、img要素~実際に表示されている画像…のオフセットをあわせたものとなる。
+        const elementOffsetX = imageRect.left - containerLeft;
+        const elementOffsetY = imageRect.top - containerTop;
+        const left = elementOffsetX + padX;
+        const top = elementOffsetY + padY;
+
+        // ---オーバーレイ表示領域の位置とサイズを設定
+        this.annotationLayerElement.style.left = `${left}px`;
+        this.annotationLayerElement.style.top = `${top}px`;
+        this.annotationLayerElement.style.width = `${contentWidth}px`;
+        this.annotationLayerElement.style.height = `${contentHeight}px`;
+
+        this.imgOffset = { x: 0, y: 0 };
     }
 
     loadImageFile() {
-        // ---rate, imgOffsetの計算
-        this.calculateRateAndOffset();
-
-        // ---imageElementを、annotationBoxContainerElementのサイズに合わせてリサイズ
-        this.imageElement.style.width = `${this.imageWidth * this.rate}px`;
-        this.imageElement.style.height = `${this.imageHeight * this.rate}px`;
-
         // ---画像の表示
         this.imageElement.src = this.imageData;
+        // ---rate, annotationLayerの更新
+        this.updateAnnotationLayerLayout();
     }
 
     loadAnnotationBoxes() {
         this.annotationBoxes.forEach((annotationBox) => {
-            // rate, offsetを元に、annotationBoxの座標を再計算する
+            // rateを元に、annotationBoxの座標を再計算する
             // 1. リサイズされる
-            // 2. rate, offset更新される
-            // 3. imageX, rate, offset から、新しいxを作る
+            // 2. rate更新される
+            // 3. imageX, rate から、新しいxを作る
             // 4. 新しいxを設定する
             // 5. imageX更新される (…imageXが、prevXみたいな感じの役割を果たす)
 
-            const newX = annotationBox.imageX * this.rate + this.imgOffset.x;
-            const newY = annotationBox.imageY * this.rate + this.imgOffset.y;
+            const newX = annotationBox.imageX * this.rate;
+            const newY = annotationBox.imageY * this.rate;
             annotationBox.setValue({
                 x: newX,
                 y: newY,
                 width: annotationBox.imageW * this.rate,
                 height: annotationBox.imageH * this.rate
             });
-            this.annotationBoxContainerElement.appendChild(annotationBox.annotationBoxElements.box);
+            this.annotationLayerElement.appendChild(annotationBox.annotationBoxElements.box);
         });
     }
 
     createAnnotationBox(x: number, y: number, width: number = 100, height: number = 100, label: string = "label"): AnnotationBox {
         const newAnnotationBox = new AnnotationBox(this, x, y, width, height, label);
-        this.annotationBoxContainerElement.appendChild(newAnnotationBox.annotationBoxElements.box);
+        this.annotationLayerElement.appendChild(newAnnotationBox.annotationBoxElements.box);
 
         this.annotationBoxes.push(newAnnotationBox);
         this.updateSelectedAnnotationBox(newAnnotationBox);
@@ -337,8 +346,8 @@ export class AnnotationBoxManager {
 
     deleteAnnotationBox(annotationBox: AnnotationBox) {
         // 子要素かどうか確認してから削除
-        if (this.annotationBoxContainerElement.contains(annotationBox.annotationBoxElements.box)) {
-            this.annotationBoxContainerElement.removeChild(annotationBox.annotationBoxElements.box);
+        if (this.annotationLayerElement.contains(annotationBox.annotationBoxElements.box)) {
+            this.annotationLayerElement.removeChild(annotationBox.annotationBoxElements.box);
             this.annotationBoxes = this.annotationBoxes.filter((box) => box !== annotationBox);
             // console.log(this.annotationBoxes);
         }
@@ -357,7 +366,7 @@ export class AnnotationBoxManager {
     convertLabelme(): LabelMe {
         const labelme = new LabelMe();
 
-        const shapes = this.annotationBoxes.map((annotationBox) => annotationBox.convertLabelmeShape(this.imgOffset, this.rate));
+        const shapes = this.annotationBoxes.map((annotationBox) => annotationBox.convertLabelmeShape(this.rate));
         labelme.shapes = shapes;
 
         labelme.imagePath = this.imageFilename;
@@ -371,13 +380,9 @@ export class AnnotationBoxManager {
 
     hideAllAnnotationBoxes() {
         this.annotationBoxes.forEach((annotationBox) => {
-            if (this.annotationBoxContainerElement.contains(annotationBox.annotationBoxElements.box)) {
-                this.annotationBoxContainerElement.removeChild(annotationBox.annotationBoxElements.box);
+            if (this.annotationLayerElement.contains(annotationBox.annotationBoxElements.box)) {
+                this.annotationLayerElement.removeChild(annotationBox.annotationBoxElements.box);
             }
         });
     }
-}
-
-function orgRound(value: number, base: number) {
-    return Math.round(value * base) / base;
 }

@@ -21,7 +21,7 @@ module.exports = {
     devServer: {
         // webpack-dev-serverの公開フォルダ
         static: {
-            directory: path.join(__dirname, "dist"),
+            directory: path.join(__dirname, "docs"),
         },
     },
     // モジュールに適用するルールの設定（ここではローダーの設定を行う事が多い）
