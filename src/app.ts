@@ -1,5 +1,6 @@
 import { AnnotationBox, AnnotationBoxManager } from "./AnnnotationBox";
 import { LabelMe } from "./LabelMe";
+import JSZip from "jszip";
 
 const inputDiv = document.getElementById("inputDiv"); // TODO 画像のドラッグアンドドロップ、ペーストへの対応
 const fileInput = document.getElementById("fileInput") as HTMLInputElement;
@@ -39,37 +40,111 @@ function exportABM(exportAnnotationBoxManager: AnnotationBoxManager) {
     const labelme = exportAnnotationBoxManager.convertLabelme();
     const labelmeText = labelme.exportToJSON();
 
-    // ---ダウンロード
-    const blob = new Blob([labelmeText], { type: "application/json" });
+    // ---JSONファイルとしてダウンロード
+    const downloadFilename = resolveExportFilename(exportAnnotationBoxManager);
+    downloadJson(labelmeText, downloadFilename);
+}
+
+function resolveExportFilename(exportAnnotationBoxManager: AnnotationBoxManager): string {
+    // ---元JSONファイル名がある場合はそれを優先する
+    const sourceJsonFilename = exportAnnotationBoxManager.sourceJsonFilename?.trim();
+    if (sourceJsonFilename) return sourceJsonFilename;
+    // ---画像由来の場合は画像ファイル名からJSON名を作る
+    const imageFileName = exportAnnotationBoxManager.imageFilename.split(".")[0];
+    return `${imageFileName}.json`;
+}
+
+function downloadJson(jsonText: string, downloadFilename: string) {
+    // ---JSONの単体ダウンロード
+    const sanitizedFilename = sanitizeFilename(downloadFilename, "annotation.json");
+    const blob = new Blob([jsonText], { type: "application/json" });
+    downloadBlob(blob, sanitizedFilename);
+}
+
+function downloadBlob(blob: Blob, downloadFilename: string) {
+    // ---Blobをブラウザダウンロードする共通処理
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    const imageFileName = exportAnnotationBoxManager.imageFilename.split(".")[0];
-    a.download = `${imageFileName}.json`;
+    a.download = downloadFilename;
+    document.body.appendChild(a);
     a.click();
-    URL.revokeObjectURL(url);
+    document.body.removeChild(a);
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function sanitizeFilename(filename: string, fallback: string): string {
+    // ---ファイル名に使えない文字を置換
+    const normalized = filename
+        .trim()
+        .replace(/[\/\\?%*:|"<>]/g, "_")
+        .replace(/[\u0000-\u001f]/g, "_");
+    return normalized.length === 0 ? fallback : normalized;
+}
+
+function dedupeFilename(filename: string, usedFilenames: Set<string>): string {
+    // ---ZIP内の重複ファイル名を回避する
+    if (!usedFilenames.has(filename)) {
+        usedFilenames.add(filename);
+        return filename;
+    }
+
+    const dotIndex = filename.lastIndexOf(".");
+    const hasExtension = dotIndex > 0;
+    const base = hasExtension ? filename.slice(0, dotIndex) : filename;
+    const extension = hasExtension ? filename.slice(dotIndex) : "";
+
+    let suffix = 2;
+    while (true) {
+        const candidate = `${base}_${suffix}${extension}`;
+        if (!usedFilenames.has(candidate)) {
+            usedFilenames.add(candidate);
+            return candidate;
+        }
+        suffix++;
+    }
+}
+
+function buildZipFilename(now: Date): string {
+    // ---ZIP名: all_YYYYMMDD_HHmmss.zip
+    const yyyy = now.getFullYear().toString();
+    const mm = (now.getMonth() + 1).toString().padStart(2, "0");
+    const dd = now.getDate().toString().padStart(2, "0");
+    const hh = now.getHours().toString().padStart(2, "0");
+    const min = now.getMinutes().toString().padStart(2, "0");
+    const ss = now.getSeconds().toString().padStart(2, "0");
+    return `all_${yyyy}${mm}${dd}_${hh}${min}${ss}.zip`;
 }
 
 const exportAllButton = document.getElementById("exportAllButton") as HTMLButtonElement;
-exportAllButton.addEventListener("click", (e) => {
-    // ---なんかうまくダウンロードできなかった
-    // for (const annotationBoxManager of annotationFiles) {
-    //     exportABM(annotationBoxManager);
-    // }
+exportAllButton.addEventListener("click", async (e) => {
+    // ---アノテーションがあるものだけをまとめて出力する
+    const exportTargets = annotationFiles
+        .filter((annotationBoxManager) => annotationBoxManager.annotationBoxes.length !== 0);
+    if (exportTargets.length === 0) {
+        alert("出力対象のアノテーションがありません。");
+        return;
+    }
 
-    // ---一つのファイルにまとめる方法
-    // あとでファイルをバラバラにしてください。。。
-    const labelmeTexts = annotationFiles
-        .filter((annotationBoxManager) => annotationBoxManager.annotationBoxes.length !== 0)
-        .map((annotationBoxManager) => annotationBoxManager.convertLabelme().exportToJSON());
-    const labelmeTextAll = `[${labelmeTexts.join(",")}]`;
-    const blob = new Blob([labelmeTextAll], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `all.json`;
-    a.click();
-    URL.revokeObjectURL(url);
+    try {
+        // ---ZIPを作成して、各JSONを追加する
+        const zip = new JSZip();
+        const usedFilenames = new Set<string>();
+        exportTargets.forEach((annotationBoxManager) => {
+            const jsonText = annotationBoxManager.convertLabelme().exportToJSON();
+            const filename = resolveExportFilename(annotationBoxManager);
+            const sanitizedFilename = sanitizeFilename(filename, "annotation.json");
+            const dedupedFilename = dedupeFilename(sanitizedFilename, usedFilenames);
+            zip.file(dedupedFilename, jsonText);
+        });
+        // ---ZIPを1ファイルとしてダウンロード
+        const zipBlob = await zip.generateAsync({ type: "blob", compression: "DEFLATE" });
+        downloadBlob(zipBlob, buildZipFilename(new Date()));
+    } catch (error) {
+        // ---ZIP生成失敗時の通知
+        console.error("JSON ZIP出力に失敗しました", error);
+        alert("JSON ZIP出力に失敗しました。ブラウザのコンソールを確認してください。");
+    }
 });
 
 /**
@@ -356,6 +431,7 @@ fileInput.addEventListener("change", async (e) => {
                     { imageContainerElement: imageDiv, annotationLayerElement: annotationLayer, imageElement: imageElement },
                     { filename: labelme.imagePath, width: labelme.imageWidth, height: labelme.imageHeight, data: newImageData }
                 );
+                newAnnotationBoxManager.sourceJsonFilename = fileName;
                 newAnnotationBoxManager.labelResolver = resolveLabelDisplay;
                 newAnnotationBoxManager.onSelectedAnnotationBoxChanged = (selectedAnnotationBox, isSelectedDifferent) => {
                     if (!isSelectedDifferent) return; // 選択が変わっていない場合は何もしない
