@@ -2,7 +2,6 @@ import { AnnotationBox, AnnotationBoxManager } from "./AnnnotationBox";
 import { LabelMe } from "./LabelMe";
 import JSZip from "jszip";
 
-const inputDiv = document.getElementById("inputDiv"); // TODO 画像のドラッグアンドドロップ、ペーストへの対応
 const fileInput = document.getElementById("fileInput") as HTMLInputElement;
 const csvInput = document.getElementById("csvInput") as HTMLInputElement;
 const imageElement = document.getElementById("image") as HTMLImageElement;
